@@ -1,3 +1,4 @@
+*.log
 /.phpunit.cache
 /node_modules
 /public/build
@@ -20,6 +21,7 @@ yarn-error.log
 /.idea
 /.vscode
 /.zed
+Thumbs.db
 
 # Local SQLite DB created at project root
 /laravel

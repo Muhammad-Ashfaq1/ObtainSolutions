@@ -13,34 +13,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install PHP 8.3 and Composer
-        run: |
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            php8.3-cli php8.3-mbstring php8.3-xml php8.3-curl \
-            php8.3-zip php8.3-mysql php8.3-intl unzip
-          curl -sS https://getcomposer.org/installer | php -- --2
-          sudo mv composer.phar /usr/local/bin/composer
-          php -v
-          composer --version
-
-      - name: Install Laravel Dependencies
-        env:
-          COMPOSER_AUTH: '{"github-oauth": {"github.com": "${{ secrets.GITHUB_TOKEN }}"}}'
-          COMPOSER_MAX_PARALLEL_HTTP: 4
-        run: |
-          attempt=1
-          max_attempts=5
-          until composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist; do
-            if [ "$attempt" -ge "$max_attempts" ]; then
-              echo "composer install failed after ${max_attempts} attempts"
-              exit 1
-            fi
-            echo "composer install failed (attempt ${attempt}/${max_attempts}); retrying after GitHub rate limit..."
-            sleep $((attempt * 20))
-            attempt=$((attempt + 1))
-          done
-
       - name: Install sshpass
         run: |
           sudo apt-get update
@@ -55,6 +27,7 @@ jobs:
             --exclude='.git' \
             --exclude='.github' \
             --exclude='node_modules' \
+            --exclude='vendor' \
             --exclude='.env' \
             --exclude='.env.backup' \
             --exclude='.env.production' \
@@ -65,7 +38,7 @@ jobs:
             -e "ssh -o StrictHostKeyChecking=no -p 65002" \
             ./ u407529782@145.79.26.191:/home/u407529782/domains/obtainsolutions.com/public_html/
 
-      - name: Run Laravel Commands
+      - name: Install dependencies and run Laravel commands
         env:
           SSHPASS: ${{ secrets.SSH_PASSWORD }}
         run: |
@@ -80,6 +53,17 @@ jobs:
             storage/logs \
             bootstrap/cache
           chmod -R ug+rwx storage bootstrap/cache
+
+          if [ ! -f composer.phar ]; then
+            php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+            php composer-setup.php --2 --filename=composer.phar
+            rm -f composer-setup.php
+          fi
+
+          export COMPOSER_MEMORY_LIMIT=-1
+          export COMPOSER_MAX_PARALLEL_HTTP=4
+
+          php composer.phar install --no-dev --optimize-autoloader --no-interaction
 
           php artisan migrate --force
           php artisan optimize:clear

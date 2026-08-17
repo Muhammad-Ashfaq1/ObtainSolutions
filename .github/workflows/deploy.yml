@@ -18,10 +18,35 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y sshpass
 
+      - name: Test SSH Connection
+        env:
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
+        run: |
+          if [ -z "$SSHPASS" ]; then
+            echo "SSH_PASSWORD secret is empty or missing."
+            echo "Add it in GitHub → Settings → Secrets and variables → Actions."
+            echo "Use the same Hostinger SSH password as the pos / syntx-solutions repos."
+            exit 1
+          fi
+
+          SSHPASS="$(printf '%s' "$SSHPASS" | tr -d '\r\n')"
+          export SSHPASS
+
+          echo "Testing SSH login to Hostinger..."
+          sshpass -e ssh -o StrictHostKeyChecking=no \
+            -o PreferredAuthentications=password \
+            -o PubkeyAuthentication=no \
+            -o NumberOfPasswordPrompts=1 \
+            -p 65002 \
+            u407529782@145.79.26.191 'echo SSH_OK && whoami'
+
       - name: Deploy to Hostinger
         env:
           SSHPASS: ${{ secrets.SSH_PASSWORD }}
         run: |
+          SSHPASS="$(printf '%s' "$SSHPASS" | tr -d '\r\n')"
+          export SSHPASS
+
           echo "Deploying files to Hostinger..."
           sshpass -e rsync -avz \
             --exclude='.git' \
@@ -35,14 +60,22 @@ jobs:
             --exclude='storage/framework/cache/*' \
             --exclude='storage/framework/sessions/*' \
             --exclude='storage/framework/views/*' \
-            -e "ssh -o StrictHostKeyChecking=no -p 65002" \
+            -e "ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 -p 65002" \
             ./ u407529782@145.79.26.191:/home/u407529782/domains/obtainsolutions.com/public_html/
 
       - name: Install dependencies and run Laravel commands
         env:
           SSHPASS: ${{ secrets.SSH_PASSWORD }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no -p 65002 u407529782@145.79.26.191 << 'EOF'
+          SSHPASS="$(printf '%s' "$SSHPASS" | tr -d '\r\n')"
+          export SSHPASS
+
+          sshpass -e ssh -o StrictHostKeyChecking=no \
+            -o PreferredAuthentications=password \
+            -o PubkeyAuthentication=no \
+            -o NumberOfPasswordPrompts=1 \
+            -p 65002 \
+            u407529782@145.79.26.191 << 'EOF'
           set -e
           cd /home/u407529782/domains/obtainsolutions.com/public_html/
 

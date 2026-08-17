@@ -2,47 +2,66 @@
 
 namespace Database\Seeders;
 
+use App\Models\ContactMessage;
 use App\Models\User;
 use Illuminate\Database\Seeder;
-use Spatie\Permission\Models\Role;
-use Spatie\Permission\Models\Permission;
 use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class AdminSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
-        // Create permissions
+        app()[PermissionRegistrar::class]->forgetCachedPermissions();
+
         $permissions = [
-            'view messages',
-            'read messages',
-            'reply messages',
-            'delete messages',
-            'manage users',
+            'dashboard.view',
+            'queries.view',
+            'queries.reply',
+            'queries.delete',
         ];
 
         foreach ($permissions as $permission) {
-            Permission::create(['name' => $permission]);
+            Permission::firstOrCreate([
+                'name' => $permission,
+                'guard_name' => 'web',
+            ]);
         }
 
-        // Create admin role
-        $adminRole = Role::create(['name' => 'admin']);
-        $adminRole->givePermissionTo($permissions);
-
-        // Create admin user
-        $admin = User::create([
-            'name' => 'Admin',
-            'email' => 'admin@obtainsolutions.com',
-            'password' => Hash::make('admin123'),
+        $adminRole = Role::firstOrCreate([
+            'name' => User::ROLE_ADMIN,
+            'guard_name' => 'web',
         ]);
+        $adminRole->syncPermissions($permissions);
 
-        $admin->assignRole('admin');
+        $admin = User::updateOrCreate(
+            ['email' => 'admin@obtainsolutions.com'],
+            [
+                'name' => 'ObtainSolutions Admin',
+                'password' => Hash::make('admin123'),
+                'email_verified_at' => now(),
+            ]
+        );
 
-        $this->command->info('Admin user created successfully!');
-        $this->command->info('Email: admin@obtainsolutions.com');
-        $this->command->info('Password: admin123');
+        $admin->syncRoles([User::ROLE_ADMIN]);
+
+        ContactMessage::firstOrCreate(
+            [
+                'email' => 'hello@startup.example',
+                'subject' => 'Need a Laravel SaaS MVP',
+            ],
+            [
+                'name' => 'Ayesha Khan',
+                'phone' => '+92 300 1234567',
+                'message' => "We want to build a multi-tenant SaaS for clinic appointments. Looking for a discovery call this week and a 6–8 week MVP estimate.",
+                'status' => 'unread',
+            ]
+        );
+
+        $this->command?->info('Admin login ready.');
+        $this->command?->info('Email: admin@obtainsolutions.com');
+        $this->command?->info('Password: admin123');
     }
 }

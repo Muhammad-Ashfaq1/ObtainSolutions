@@ -1,0 +1,38 @@
+/*
+ * admin-queries.css — contact queries list/detail screen.
+ */
+.os-query-row-unread td {
+    font-weight: 600;
+}
+
+.os-query-body {
+    white-space: pre-wrap;
+    line-height: 1.7;
+}
+
+.os-timeline {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.os-timeline li {
+    position: relative;
+    padding-left: 1.75rem;
+    padding-bottom: 1rem;
+}
+
+.os-timeline li:last-child {
+    padding-bottom: 0;
+}
+
+.os-timeline li::before {
+    content: "";
+    position: absolute;
+    left: 0.35rem;
+    top: 0.45rem;
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: rgb(var(--pos-tone-rgb, 105, 108, 255));
+}

@@ -828,6 +828,10 @@
                         <h3 class="fw-bolder mb-4">Tell us about your project</h3>
                         <form id="contact-form" novalidate>
                             @csrf
+                            <div class="d-none" aria-hidden="true">
+                                <label for="website">Website</label>
+                                <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+                            </div>
                             <div class="row g-3">
                                 <div class="col-md-6">
                                     <label for="name" class="form-label">Name <span class="text-danger">*</span></label>
@@ -1120,6 +1124,7 @@
                 method: 'POST',
                 body: formData,
                 headers: {
+                    'Accept': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest',
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
                 }

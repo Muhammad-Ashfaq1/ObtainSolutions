@@ -3,57 +3,51 @@
 namespace App\Http\Controllers;
 
 use App\Models\ContactMessage;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
 
 class AdminController extends Controller
 {
-
-    /**
-     * Show login form
-     */
     public function login()
     {
-        if (Auth::check()) {
+        if (Auth::check() && Auth::user()?->isAdmin()) {
             return redirect()->route('admin.dashboard');
         }
+
         return view('admin.login');
     }
 
-    /**
-     * Authenticate admin
-     */
     public function authenticate(Request $request)
     {
         $credentials = $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
+            'email' => ['required', 'email'],
+            'password' => ['required', 'string'],
         ]);
 
-        if (Auth::attempt($credentials)) {
-            $user = Auth::user();
-            
-            if ($user->hasRole('admin')) {
-                $request->session()->regenerate();
-                return redirect()->intended(route('admin.dashboard'));
-            } else {
-                Auth::logout();
-                return back()->withErrors([
-                    'email' => 'You do not have admin access.',
-                ]);
-            }
+        if (! Auth::attempt($credentials, $request->boolean('remember'))) {
+            return back()->withErrors([
+                'email' => 'The provided credentials do not match our records.',
+            ])->onlyInput('email');
         }
 
-        return back()->withErrors([
-            'email' => 'The provided credentials do not match our records.',
-        ]);
+        $user = Auth::user();
+
+        if (! $user instanceof User || ! $user->isAdmin()) {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return back()->withErrors([
+                'email' => 'You do not have admin access.',
+            ])->onlyInput('email');
+        }
+
+        $request->session()->regenerate();
+
+        return redirect()->intended(route('admin.dashboard'));
     }
 
-    /**
-     * Show admin dashboard
-     */
     public function dashboard()
     {
         $stats = [
@@ -63,91 +57,79 @@ class AdminController extends Controller
             'replied' => ContactMessage::replied()->count(),
         ];
 
-        $recentMessages = ContactMessage::latest()->take(5)->get();
+        $recentMessages = ContactMessage::latest()->take(6)->get();
 
         return view('admin.dashboard', compact('stats', 'recentMessages'));
     }
 
-    /**
-     * Show all messages
-     */
     public function messages(Request $request)
     {
         $query = ContactMessage::query();
 
-        // Filter by status
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
 
-        // Search functionality
         if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $search = $request->string('search');
+            $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%")
-                  ->orWhere('subject', 'like', "%{$search}%")
-                  ->orWhere('message', 'like', "%{$search}%");
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('subject', 'like', "%{$search}%")
+                    ->orWhere('message', 'like', "%{$search}%");
             });
         }
 
-        $messages = $query->latest()->paginate(15);
+        $messages = $query->latest()->paginate(15)->withQueryString();
+
         return view('admin.messages', compact('messages'));
     }
 
-    /**
-     * Show single message
-     */
     public function showMessage(ContactMessage $message)
     {
         if ($message->status === 'unread') {
             $message->markAsRead();
         }
-        
+
         return view('admin.message-detail', compact('message'));
     }
 
-    /**
-     * Mark message as replied
-     */
     public function markAsReplied(ContactMessage $message)
     {
         $message->markAsReplied();
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Message marked as replied successfully.'
-        ]);
+
+        if (request()->expectsJson() || request()->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Query marked as replied.',
+            ]);
+        }
+
+        return back()->with('success', 'Query marked as replied.');
     }
 
-    /**
-     * Delete message
-     */
     public function deleteMessage(ContactMessage $message)
     {
         $message->delete();
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Message deleted successfully.'
-        ]);
+
+        if (request()->expectsJson() || request()->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Query deleted.',
+                'redirect' => route('admin.messages'),
+            ]);
+        }
+
+        return redirect()->route('admin.messages')->with('success', 'Query deleted.');
     }
 
-    /**
-     * Logout admin
-     */
     public function logout(Request $request)
     {
-        // Log the logout attempt
-        Log::info('Admin logout attempted', [
-            'user_id' => Auth::id(),
-            'user_email' => Auth::user() ? Auth::user()->email : 'unknown'
-        ]);
-        
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
-        
-        return redirect()->route('admin.login')->with('success', 'You have been successfully logged out.');
+
+        return redirect()->route('admin.login')->with('success', 'You have been logged out.');
     }
-} 
+}

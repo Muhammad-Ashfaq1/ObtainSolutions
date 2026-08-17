@@ -13,28 +13,16 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up PHP 8.3
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.3'
-          tools: composer:v2
-        env:
-          COMPOSER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Verify PHP Version
-        run: php -v && composer --version
-
-      - name: Get Composer cache directory
-        id: composer-cache
-        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Composer packages
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.composer-cache.outputs.dir }}
-          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-composer-
+      - name: Install PHP 8.3 and Composer
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            php8.3-cli php8.3-mbstring php8.3-xml php8.3-curl \
+            php8.3-zip php8.3-mysql php8.3-intl unzip
+          curl -sS https://getcomposer.org/installer | php -- --2
+          sudo mv composer.phar /usr/local/bin/composer
+          php -v
+          composer --version
 
       - name: Install Laravel Dependencies
         env:
@@ -53,38 +41,57 @@ jobs:
             attempt=$((attempt + 1))
           done
 
-      # Install sshpass
       - name: Install sshpass
         run: |
           sudo apt-get update
           sudo apt-get install -y sshpass
 
-      # Deploy files to Hostinger
       - name: Deploy to Hostinger
+        env:
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
         run: |
           echo "Deploying files to Hostinger..."
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" rsync -avz -e "ssh -o StrictHostKeyChecking=no -p 65002" ./ u407529782@145.79.26.191:/home/u407529782/domains/obtainsolutions.com/public_html/
+          sshpass -e rsync -avz \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='node_modules' \
+            --exclude='.env' \
+            --exclude='.env.backup' \
+            --exclude='.env.production' \
+            --exclude='storage/logs/*' \
+            --exclude='storage/framework/cache/*' \
+            --exclude='storage/framework/sessions/*' \
+            --exclude='storage/framework/views/*' \
+            -e "ssh -o StrictHostKeyChecking=no -p 65002" \
+            ./ u407529782@145.79.26.191:/home/u407529782/domains/obtainsolutions.com/public_html/
 
-      # Run Laravel Commands
       - name: Run Laravel Commands
+        env:
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
         run: |
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -o StrictHostKeyChecking=no -p 65002 u407529782@145.79.26.191 << 'EOF'
+          sshpass -e ssh -o StrictHostKeyChecking=no -p 65002 u407529782@145.79.26.191 << 'EOF'
+          set -e
           cd /home/u407529782/domains/obtainsolutions.com/public_html/
+
+          mkdir -p \
+            storage/framework/cache \
+            storage/framework/sessions \
+            storage/framework/views \
+            storage/logs \
+            bootstrap/cache
+          chmod -R ug+rwx storage bootstrap/cache
+
           php artisan migrate --force
+          php artisan optimize:clear
           php artisan config:cache
           php artisan route:cache
           php artisan view:cache
-          php artisan optimize:clear
-          # Set correct permissions for storage directory first
-          chmod -R 755 /home/u407529782/domains/obtainsolutions.com/public_html/storage
-          # Remove existing symbolic link if it exists
-          rm -f /home/u407529782/domains/obtainsolutions.com/public_html/public/storage
-          # Create symbolic link for storage
-          ln -sfn /home/u407529782/domains/obtainsolutions.com/public_html/storage/app/public /home/u407529782/domains/obtainsolutions.com/public_html/public/storage
-          # Set permissions for the public directory (but not the symlink itself)
-          chmod -R 755 /home/u407529782/domains/obtainsolutions.com/public_html/public
+
+          rm -f public/storage
+          ln -sfn /home/u407529782/domains/obtainsolutions.com/public_html/storage/app/public \
+            /home/u407529782/domains/obtainsolutions.com/public_html/public/storage
+          chmod -R 755 storage
           EOF
 
-      # Completion message
       - name: Completion Message
         run: echo "Laravel application deployed successfully!"

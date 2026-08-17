@@ -1,0 +1,73 @@
+name: Deploy Laravel Application
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout code
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Set up PHP 8.3
+      - name: Set up PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+
+      # Verify PHP version
+      - name: Verify PHP Version
+        run: echo "PHP version $(php -v)"
+
+      # Install Composer 2
+      - name: Install Composer 2
+        run: |
+          curl -sS https://getcomposer.org/installer | php -- --2
+          sudo mv composer.phar /usr/local/bin/composer
+          composer --version
+
+      # Install Laravel Dependencies
+      - name: Install Laravel Dependencies
+        run: |
+          composer install --no-dev --optimize-autoloader
+
+      # Install sshpass
+      - name: Install sshpass
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+
+      # Deploy files to Hostinger
+      - name: Deploy to Hostinger
+        run: |
+          echo "Deploying files to Hostinger..."
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" rsync -avz -e "ssh -o StrictHostKeyChecking=no -p 65002" ./ u407529782@145.79.26.191:/home/u407529782/domains/obtainsolutions.com/public_html/
+
+      # Run Laravel Commands
+      - name: Run Laravel Commands
+        run: |
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -o StrictHostKeyChecking=no -p 65002 u407529782@145.79.26.191 << 'EOF'
+          cd /home/u407529782/domains/obtainsolutions.com/public_html/
+          php artisan migrate --force
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
+          php artisan optimize:clear
+          # Set correct permissions for storage directory first
+          chmod -R 755 /home/u407529782/domains/obtainsolutions.com/public_html/storage
+          # Remove existing symbolic link if it exists
+          rm -f /home/u407529782/domains/obtainsolutions.com/public_html/public/storage
+          # Create symbolic link for storage
+          ln -sfn /home/u407529782/domains/obtainsolutions.com/public_html/storage/app/public /home/u407529782/domains/obtainsolutions.com/public_html/public/storage
+          # Set permissions for the public directory (but not the symlink itself)
+          chmod -R 755 /home/u407529782/domains/obtainsolutions.com/public_html/public
+          EOF
+
+      # Completion message
+      - name: Completion Message
+        run: echo "Laravel application deployed successfully!"

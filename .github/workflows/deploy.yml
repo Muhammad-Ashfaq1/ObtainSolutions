@@ -75,7 +75,7 @@ jobs:
             -o PubkeyAuthentication=no \
             -o NumberOfPasswordPrompts=1 \
             -p 65002 \
-            u407529782@145.79.26.191 << 'EOF'
+            u407529782@145.79.26.191 bash -s << 'EOF'
           set -e
           cd /home/u407529782/domains/obtainsolutions.com/public_html/
 
@@ -94,9 +94,27 @@ jobs:
           fi
 
           export COMPOSER_MEMORY_LIMIT=-1
-          export COMPOSER_MAX_PARALLEL_HTTP=4
+          export COMPOSER_MAX_PARALLEL_HTTP=1
 
+          set +e
+          php composer.phar config -g repos.packagist composer https://mirrors.aliyun.com/composer/
+          php composer.phar update --lock --no-install --no-dev --no-interaction --no-plugins
           php composer.phar install --no-dev --optimize-autoloader --no-interaction
+          composer_status=$?
+
+          if [ "$composer_status" -ne 0 ]; then
+            echo "Aliyun mirror failed; trying Tencent Cloud mirror..."
+            php composer.phar config -g repos.packagist composer https://mirrors.cloud.tencent.com/composer/
+            php composer.phar update --lock --no-install --no-dev --no-interaction --no-plugins
+            php composer.phar install --no-dev --optimize-autoloader --no-interaction
+            composer_status=$?
+          fi
+          set -e
+
+          if [ "$composer_status" -ne 0 ]; then
+            echo "composer install failed from both mirrors"
+            exit 1
+          fi
 
           php artisan migrate --force
           php artisan optimize:clear
